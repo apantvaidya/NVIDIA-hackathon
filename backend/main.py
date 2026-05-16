@@ -1,7 +1,9 @@
 import asyncio
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
+from agent_orchestration.router import router as agent_router
 from simulation.action_engine import (
     transfer_inventory,
     update_lane_status,
@@ -29,7 +31,20 @@ from simulation.state import get_world_state, reset_world_state
 
 
 app = FastAPI(title="ChainPilot Simulation Backend")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://0.0.0.0:5173",
+        "*",
+    ],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 SIMULATION_TASK = None
+app.include_router(agent_router, prefix="/api/agent", tags=["agent-orchestration"])
 
 
 def _refresh_kpis(state):
