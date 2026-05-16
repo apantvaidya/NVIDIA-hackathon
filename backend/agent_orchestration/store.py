@@ -48,6 +48,21 @@ def get_events(episode_id: str) -> List[AgentEvent]:
     return events_by_episode.get(episode_id, [])
 
 
+def reset_agent_orchestration() -> Dict[str, int]:
+    episode_count = len(episodes)
+    event_count = sum(len(events) for events in events_by_episode.values())
+    episodes.clear()
+    events_by_episode.clear()
+    ws_manager.broadcast(
+        "agent_state_reset",
+        {
+            "episodes_cleared": episode_count,
+            "events_cleared": event_count,
+        },
+    )
+    return {"episodes_cleared": episode_count, "events_cleared": event_count}
+
+
 def _status_for_event(event_type: AgentEventType) -> EpisodeStatus | None:
     status_map = {
         AgentEventType.RED_PLAN: EpisodeStatus.waiting_for_blue_revised_plan,

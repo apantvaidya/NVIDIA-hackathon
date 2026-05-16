@@ -12,12 +12,16 @@ export function useAgentData() {
 
   const refresh = useCallback(async () => {
     const episodesResult = await safeCall("agent episodes", listAgentEpisodes);
+    let episodeId = selectedEpisodeId;
     if (episodesResult.data) {
-      setEpisodes(episodesResult.data);
-      setSelectedEpisodeId((current) => current || episodesResult.data?.[0]?.id);
+      const nextEpisodes = episodesResult.data;
+      setEpisodes(nextEpisodes);
+      episodeId = nextEpisodes.some((episode) => episode.id === selectedEpisodeId)
+        ? selectedEpisodeId
+        : nextEpisodes[0]?.id;
+      setSelectedEpisodeId(episodeId);
     }
 
-    const episodeId = selectedEpisodeId || episodesResult.data?.[0]?.id;
     if (episodeId) {
       const timelineResult = await safeCall("agent timeline", () => getAgentEpisodeTimeline(episodeId));
       if (timelineResult.data) setTimelineEvents(timelineResult.data.events || []);
@@ -41,6 +45,11 @@ export function useAgentData() {
         if (!ep) return;
         setEpisodes((prev) => [ep, ...prev.filter((e) => e.id !== ep.id)]);
         setSelectedEpisodeId((current) => current || ep.id);
+      } else if (type === "agent_state_reset") {
+        setEpisodes([]);
+        setSelectedEpisodeId(undefined);
+        setTimelineEvents([]);
+        setError(undefined);
       } else if (type === "episode_completed") {
         const ep = payload?.episode as AgentEpisode | undefined;
         if (!ep) return;

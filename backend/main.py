@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from agent_orchestration.router import router as agent_router
 from agent_orchestration.schemas import AgentEpisodeCreate
-from agent_orchestration.store import create_episode
+from agent_orchestration.store import create_episode, reset_agent_orchestration
 from realtime import manager as ws_manager
 from simulation.action_engine import (
     transfer_inventory,
@@ -311,8 +311,19 @@ def tick():
 
 @app.post("/reset")
 def reset():
+    global AUTO_WEEKLY_EPISODES
+    AUTO_WEEKLY_EPISODES = False
     state = reset_world_state()
-    return {"success": True, "message": "World state reset to industrial equilibrium.", "state": state, "kpis": _refresh_kpis(state)}
+    agent_reset = reset_agent_orchestration()
+    kpis = _refresh_kpis(state)
+    return {
+        "success": True,
+        "message": "World state and agent episodes reset to industrial equilibrium.",
+        "state": state,
+        "kpis": kpis,
+        "agent_orchestration": agent_reset,
+        "auto_create_episode_each_tick": AUTO_WEEKLY_EPISODES,
+    }
 
 
 @app.post("/simulation/start")

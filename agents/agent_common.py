@@ -13,6 +13,31 @@ BACKEND = os.environ.get("BACKEND_URL", "http://localhost:8000").rstrip("/")
 AGENT_ID = os.environ.get("AGENT_ID", "anon-agent")
 OPENCLAW_BIN = os.environ.get("OPENCLAW_BIN", "openclaw")
 AGENT_TIMEOUT = int(os.environ.get("AGENT_TIMEOUT", "180"))
+OPENCLAW_SESSION_ID = os.environ.get("OPENCLAW_SESSION_ID", f"chainpilot-{AGENT_ID}")
+TARGET_EPISODE_ID = os.environ.get("TARGET_EPISODE_ID")
+AGENT_RUN_ONCE = os.environ.get("AGENT_RUN_ONCE", "1" if TARGET_EPISODE_ID else "0") == "1"
+
+SHORT_PROMPTS = {
+    "red_agent": (
+        "You are ChainPilot Red Agent. Your entire response must be one parseable JSON object. "
+        "Start with { and end with }. No prose, no markdown, no analysis outside JSON. "
+        "Required top-level keys: title, summary, payload. The payload must contain action_type, "
+        "execute_endpoint, request, reasoning, expected_tradeoffs, and confidence. "
+        "Use backend request fields from_node and to_node, never from_location or to_location. "
+        "Propose exactly one action. Do not call tools or backend APIs."
+    ),
+    "blue_agent": (
+        "You are ChainPilot Blue Agent. Your entire response must be one parseable JSON array. "
+        "No prose, no markdown, no analysis outside JSON. Include BLUE_ASSESSMENT "
+        "and, unless rejected, BLUE_REVISED_PLAN. Do not call tools or backend APIs. "
+        "Blue critiques and revises Red's plan; Red does not revise again."
+    ),
+    "executor_agent": (
+        "You are ChainPilot Executor-Narrator Agent. Your entire response must be one parseable "
+        "JSON object. No prose, no markdown. Describe whether the provided plan is safe to execute. "
+        "Do not call tools or backend APIs."
+    ),
+}
 
 
 def log(msg: str) -> None:
@@ -49,6 +74,30 @@ def post_event(episode_id: str, event_type: str, title: str, summary: str, paylo
 def episodes_with_status(status: str) -> List[Dict[str, Any]]:
     eps = get("/api/agent/episodes")
     return [e for e in eps if e.get("status") == status]
+
+
+def timeline_events(episode_id: str) -> List[Dict[str, Any]]:
+    timeline = get(f"/api/agent/episodes/{episode_id}/timeline")
+    return timeline.get("events", [])
+
+
+def normalize_transfer_request(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize common LLM aliases into backend request field names."""
+    request = payload.get("request")
+    if not isinstance(request, dict):
+        return payload
+    if "from_node" not in request and "from_location" in request:
+        request["from_node"] = request.pop("from_location")
+    if "to_node" not in request and "to_location" in request:
+        request["to_node"] = request.pop("to_location")
+    if payload.get("action_type") == "transfer_inventory" and not request.get("lane_id"):
+        from_node = request.get("from_node")
+        to_node = request.get("to_node")
+        if from_node == "chicago_hub" and to_node == "west_coast_dc":
+            request["lane_id"] = "chicago_to_west_rail"
+        elif from_node == "west_coast_dc" and to_node == "chicago_hub":
+            request["lane_id"] = "west_to_chicago_truck"
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -104,18 +153,63 @@ def extract_json(text: str) -> Optional[Any]:
     return None
 
 
-def call_openclaw(agent_name: str, message_obj: Dict[str, Any]) -> Any:
+def load_agent_prompt(prompt_name: str) -> str:
+    """Use compact prompts; full markdown prompts are too large for CLI calls."""
+    return SHORT_PROMPTS.get(prompt_name, SHORT_PROMPTS["red_agent"])
+
+
+def call_openclaw(agent_name: str, message_obj: Dict[str, Any], prompt_name: Optional[str] = None) -> Any:
     """Run an OpenClaw agent and parse JSON from stdout.
 
-    Raises FileNotFoundError if OpenClaw isn't installed — callers can catch
-    that and use a mock fallback for local testing without OpenClaw.
+    Raises immediately if OpenClaw is unavailable or returns non-JSON.
     """
-    message = json.dumps(message_obj)
+    role_prompt = load_agent_prompt(prompt_name or agent_name)
+    message = json.dumps({
+        "chainpilot_runner_contract": {
+            "important": "Return JSON only. Do not call backend APIs or tools. Python will submit events.",
+        },
+        "agent_instructions": role_prompt,
+        "input": message_obj,
+    })
     completed = subprocess.run(
-        [OPENCLAW_BIN, "agent", "--agent", agent_name, "--message", message],
+        [
+            OPENCLAW_BIN, "agent",
+            "--agent", agent_name,
+            "--session-id", OPENCLAW_SESSION_ID,
+            "--json",
+            "--thinking", os.environ.get("OPENCLAW_THINKING", "off"),
+            "--message", message,
+        ],
         capture_output=True, text=True, timeout=AGENT_TIMEOUT,
     )
     parsed = extract_json(completed.stdout) or extract_json(completed.stderr)
+    if isinstance(parsed, str):
+        nested = extract_json(parsed)
+        if nested is not None:
+            parsed = nested
+    if isinstance(parsed, dict):
+        payloads = parsed.get("result", {}).get("payloads")
+        if isinstance(payloads, list):
+            for payload in payloads:
+                if isinstance(payload, dict) and isinstance(payload.get("text"), str):
+                    nested = extract_json(payload["text"])
+                    if nested is not None:
+                        return nested
+            text_parts = [
+                payload.get("text", "")
+                for payload in payloads
+                if isinstance(payload, dict) and isinstance(payload.get("text"), str)
+            ]
+            if text_parts:
+                return {"_raw_openclaw_text": "\n".join(text_parts)}
+        for key in ("reply", "response", "message", "content", "text", "output"):
+            value = parsed.get(key)
+            if isinstance(value, str):
+                nested = extract_json(value)
+                if nested is not None:
+                    return nested
+            elif isinstance(value, (dict, list)):
+                return value
     if parsed is None:
         raise RuntimeError(
             f"no JSON in {agent_name} output (rc={completed.returncode})\n"

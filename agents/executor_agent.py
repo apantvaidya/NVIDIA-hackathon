@@ -16,10 +16,13 @@ import traceback
 import requests
 
 from agent_common import (
-    BACKEND, call_openclaw, episodes_with_status, get, log, post, post_event,
+    AGENT_RUN_ONCE, BACKEND, TARGET_EPISODE_ID, call_openclaw,
+    episodes_with_status, get, log, normalize_transfer_request, post,
+    post_event, timeline_events,
 )
 
 POLL_INTERVAL = int(os.environ.get("EXECUTOR_POLL_INTERVAL", "2"))
+OPENCLAW_AGENT = os.environ.get("EXECUTOR_OPENCLAW_AGENT", "executor-agent")
 
 ALLOWED_ENDPOINTS = {
     "/execute/transfer-inventory",
@@ -44,25 +47,39 @@ def safe_execute(endpoint, body):
         return False, {"error": str(e)}
 
 
-def mock_executor(plan_payload):
-    return {
-        "execution_status": "ready",
-        "tool_called": plan_payload.get("action_type"),
-        "endpoint": plan_payload.get("execute_endpoint"),
-        "payload_sent": plan_payload.get("request"),
-        "summary": "Mock executor decision (no openclaw on PATH).",
-    }
+def _episode_has_execution_event(episode_id):
+    return any(
+        event.get("event_type") in {"EXECUTOR_ACTION", "EXECUTION_RESULT"}
+        for event in timeline_events(episode_id)
+    )
+
+
+def next_episode_for_executor():
+    if TARGET_EPISODE_ID:
+        episode = get(f"/api/agent/episodes/{TARGET_EPISODE_ID}")
+        if _episode_has_execution_event(TARGET_EPISODE_ID):
+            log(f"skip: target episode {TARGET_EPISODE_ID} already has execution events")
+            return None
+        if episode.get("status") != "waiting_for_executor_narrator":
+            log(f"waiting: target episode {TARGET_EPISODE_ID} is {episode.get('status')}")
+            return None
+        return episode
+
+    pending = episodes_with_status("waiting_for_executor_narrator")
+    for episode in pending:
+        if not _episode_has_execution_event(episode["id"]):
+            return episode
+    return None
 
 
 def step():
-    pending = episodes_with_status("waiting_for_executor_narrator")
-    if not pending:
+    episode = next_episode_for_executor()
+    if not episode:
         return False
-    episode = pending[-1]
     episode_id = episode["id"]
 
     plan = get(f"/api/agent/episodes/{episode_id}/latest-final-action")
-    payload = plan.get("payload", {})
+    payload = normalize_transfer_request(plan.get("payload", {}))
     endpoint = payload.get("execute_endpoint", "")
     request_body = payload.get("request", {})
 
@@ -74,10 +91,7 @@ def step():
         log(f"refused {episode_id} endpoint={endpoint}")
         return True
 
-    try:
-        decision = call_openclaw("executor-agent", {"plan": payload, "sim_base_url": BACKEND})
-    except FileNotFoundError:
-        decision = mock_executor(payload)
+    decision = call_openclaw(OPENCLAW_AGENT, {"plan": payload, "sim_base_url": BACKEND}, prompt_name="executor_agent")
 
     ok, response = safe_execute(endpoint, request_body)
     status = "success" if ok else "failed"
@@ -97,11 +111,16 @@ def main():
     log(f"executor agent up — backend={BACKEND}  poll={POLL_INTERVAL}s")
     while True:
         try:
-            if not step():
+            did_work = step()
+            if AGENT_RUN_ONCE:
+                return
+            if not did_work:
                 time.sleep(POLL_INTERVAL)
         except Exception as e:
             log(f"error: {e}")
             traceback.print_exc()
+            if AGENT_RUN_ONCE:
+                raise
             time.sleep(POLL_INTERVAL)
 
 
