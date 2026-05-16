@@ -1,9 +1,10 @@
 import asyncio
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from agent_orchestration.router import router as agent_router
+from realtime import manager as ws_manager
 from simulation.action_engine import (
     transfer_inventory,
     update_lane_status,
@@ -47,6 +48,11 @@ SIMULATION_TASK = None
 app.include_router(agent_router, prefix="/api/agent", tags=["agent-orchestration"])
 
 
+@app.on_event("startup")
+async def _bind_ws_loop():
+    ws_manager.bind_loop(asyncio.get_running_loop())
+
+
 def _refresh_kpis(state):
     state["kpis"] = calculate_kpis(state)
     return state["kpis"]
@@ -58,11 +64,14 @@ def _execute_action(action_callback):
         log_entry = action_callback(state)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+    new_kpis = _refresh_kpis(state)
+    ws_manager.broadcast("execution_applied", {"log_entry": log_entry, "kpis": new_kpis})
+    ws_manager.broadcast("state_updated", {"kpis": new_kpis, "virtual_week": state.get("virtual_week")})
     return {
         "success": True,
         "message": "Action executed and logged.",
         "log_entry": log_entry,
-        "new_kpis": _refresh_kpis(state),
+        "new_kpis": new_kpis,
         "updated_state": state,
     }
 
@@ -307,3 +316,24 @@ def simulation_status():
         "virtual_week": state["virtual_week"],
         "time_step": state["time_step"],
     }
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await ws_manager.connect(websocket)
+    try:
+        await websocket.send_json({
+            "type": "hello",
+            "service": "chainpilot-backend",
+            "clients": ws_manager.client_count,
+        })
+        while True:
+            msg = await websocket.receive_text()
+            if msg == "ping":
+                await websocket.send_json({"type": "pong"})
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        await ws_manager.disconnect(websocket)

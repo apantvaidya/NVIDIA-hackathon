@@ -11,6 +11,7 @@ from agent_orchestration.schemas import (
     NextStep,
     utc_now,
 )
+from realtime import manager as ws_manager
 
 
 episodes: Dict[str, AgentEpisode] = {}
@@ -31,6 +32,7 @@ def create_episode(request: AgentEpisodeCreate) -> AgentEpisode:
     )
     episodes[episode.id] = episode
     events_by_episode[episode.id] = []
+    ws_manager.broadcast("episode_created", {"episode": episode.model_dump()})
     return episode
 
 
@@ -83,7 +85,13 @@ def add_event(request: AgentEventCreate) -> tuple[AgentEvent, NextStep]:
         episode.status = next_status
     episode.updated_at = utc_now()
     episodes[request.episode_id] = episode
-    return event, next_step_for_event(request.event_type)
+    next_step = next_step_for_event(request.event_type)
+    ws_manager.broadcast("agent_event", {
+        "event": event.model_dump(),
+        "episode": episode.model_dump(),
+        "next_step": next_step.model_dump(),
+    })
+    return event, next_step
 
 
 def complete_episode(episode_id: str) -> AgentEpisode:
@@ -91,6 +99,7 @@ def complete_episode(episode_id: str) -> AgentEpisode:
     episode.status = EpisodeStatus.completed
     episode.updated_at = utc_now()
     episodes[episode_id] = episode
+    ws_manager.broadcast("episode_completed", {"episode": episode.model_dump()})
     return episode
 
 

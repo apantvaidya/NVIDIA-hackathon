@@ -9,6 +9,7 @@ import {
   getState,
   safeCall,
 } from "../api/client";
+import { connectRealtime } from "../api/realtime";
 import type { AnyRecord, GraphResponse, KpiSnapshot, SimulationStatus } from "../api/types";
 
 export function useSimulationData() {
@@ -65,8 +66,17 @@ export function useSimulationData() {
 
   useEffect(() => {
     refresh();
-    const interval = window.setInterval(refresh, 3000);
+    const interval = window.setInterval(refresh, 15000);
     return () => window.clearInterval(interval);
+  }, [refresh]);
+
+  useEffect(() => {
+    const dispose = connectRealtime((message) => {
+      if (message.type === "execution_applied" || message.type === "state_updated") {
+        refresh();
+      }
+    });
+    return dispose;
   }, [refresh]);
 
   return { state, kpis, previousKpis, graph, actions, events, alerts, status, kpiHistory, loading, error, refresh };

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getAgentEpisodeTimeline, listAgentEpisodes, safeCall } from "../api/client";
+import { connectRealtime } from "../api/realtime";
 import type { AgentEpisode, AgentEvent } from "../api/types";
 
 export function useAgentData() {
@@ -30,9 +31,38 @@ export function useAgentData() {
 
   useEffect(() => {
     refresh();
-    const interval = window.setInterval(refresh, 3000);
-    return () => window.clearInterval(interval);
   }, [refresh]);
+
+  useEffect(() => {
+    const dispose = connectRealtime((message) => {
+      const { type, payload } = message;
+      if (type === "episode_created") {
+        const ep = payload?.episode as AgentEpisode | undefined;
+        if (!ep) return;
+        setEpisodes((prev) => [ep, ...prev.filter((e) => e.id !== ep.id)]);
+        setSelectedEpisodeId((current) => current || ep.id);
+      } else if (type === "episode_completed") {
+        const ep = payload?.episode as AgentEpisode | undefined;
+        if (!ep) return;
+        setEpisodes((prev) => prev.map((e) => (e.id === ep.id ? ep : e)));
+      } else if (type === "agent_event") {
+        const evt = payload?.event as AgentEvent | undefined;
+        const ep = payload?.episode as AgentEpisode | undefined;
+        if (ep) setEpisodes((prev) => prev.map((e) => (e.id === ep.id ? ep : e)));
+        if (!evt) return;
+        setSelectedEpisodeId((current) => {
+          const target = current || ep?.id;
+          if (target && evt.episode_id === target) {
+            setTimelineEvents((events) =>
+              events.some((e) => e.id === evt.id) ? events : [...events, evt],
+            );
+          }
+          return target;
+        });
+      }
+    });
+    return dispose;
+  }, []);
 
   return {
     episodes,
