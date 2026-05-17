@@ -132,6 +132,8 @@ def _fulfill_demand(state):
             unmet[channel_id][product_id] = shortage
     state["last_unmet_demand"] = unmet
     state["last_fulfilled_demand"] = fulfilled
+    state["last_demand_fulfilled_time_step"] = state["time_step"]
+    state["service_projection_dirty"] = False
     _log_event(state, "demand_fulfillment", "Demand fulfilled from assigned distribution nodes.", {"fulfilled": fulfilled, "unmet": unmet})
     return {"fulfilled": fulfilled, "unmet": unmet}
 

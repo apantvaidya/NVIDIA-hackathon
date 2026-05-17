@@ -15,6 +15,7 @@ def _utc_timestamp():
 
 
 def log_action(state, action_type, payload, before, after):
+    state["service_projection_dirty"] = True
     log_entry = {
         "timestamp": _utc_timestamp(),
         "time_step": state["time_step"],

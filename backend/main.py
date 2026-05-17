@@ -61,13 +61,61 @@ def _refresh_kpis(state):
     return state["kpis"]
 
 
+def _kpi_delta(before, after):
+    def pick(kpis, path):
+        value = kpis
+        for key in path:
+            if not isinstance(value, dict):
+                return None
+            value = value.get(key)
+        return value
+
+    metrics = {
+        "estimated_profit": ("financial", "estimated_profit"),
+        "transport_cost": ("financial", "transport_cost"),
+        "stockout_penalty": ("financial", "stockout_penalty"),
+        "vendor_compliance_fines": ("financial", "vendor_compliance_fines"),
+        "estimated_emissions": ("logistics", "estimated_emissions"),
+        "air_freight_share": ("logistics", "air_freight_share"),
+        "supplier_risk_index": ("sourcing", "supplier_risk_index"),
+    }
+    delta = {}
+    for name, path in metrics.items():
+        before_value = pick(before, path)
+        after_value = pick(after, path)
+        if isinstance(before_value, (int, float)) and isinstance(after_value, (int, float)):
+            delta[name] = round(after_value - before_value, 4)
+    return delta
+
+
+def _tradeoff_summary(delta):
+    improves = []
+    worsens = []
+    neutral = []
+    higher_is_better = {"estimated_profit"}
+    for key, value in delta.items():
+        if not isinstance(value, (int, float)) or value == 0:
+            neutral.append(key)
+        elif key in higher_is_better:
+            (improves if value > 0 else worsens).append(key)
+        else:
+            (improves if value < 0 else worsens).append(key)
+    return {"improves": improves, "worsens": worsens, "neutral": neutral}
+
+
 def _execute_action(action_callback):
     state = get_world_state()
+    before_kpis = calculate_kpis(state)
     try:
         log_entry = action_callback(state)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     new_kpis = _refresh_kpis(state)
+    delta = _kpi_delta(before_kpis, new_kpis)
+    log_entry["before_kpis"] = before_kpis
+    log_entry["after_kpis"] = new_kpis
+    log_entry["kpi_delta"] = delta
+    log_entry["tradeoff_summary"] = _tradeoff_summary(delta)
     ws_manager.broadcast("execution_applied", {"log_entry": log_entry, "kpis": new_kpis})
     ws_manager.broadcast("state_updated", {"kpis": new_kpis, "virtual_week": state.get("virtual_week")})
     return {

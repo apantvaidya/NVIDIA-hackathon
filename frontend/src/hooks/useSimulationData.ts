@@ -66,13 +66,19 @@ export function useSimulationData() {
 
   useEffect(() => {
     refresh();
-    const interval = window.setInterval(refresh, 15000);
+    const interval = window.setInterval(refresh, 3000);
     return () => window.clearInterval(interval);
   }, [refresh]);
 
   useEffect(() => {
     const dispose = connectRealtime((message) => {
-      if (message.type === "execution_applied" || message.type === "state_updated") {
+      if (
+        message.type === "execution_applied" ||
+        message.type === "state_updated" ||
+        message.type === "agent_event" ||
+        message.type === "episode_completed" ||
+        message.type === "agent_state_reset"
+      ) {
         refresh();
       }
     });

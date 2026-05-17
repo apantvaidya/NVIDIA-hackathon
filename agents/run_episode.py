@@ -287,10 +287,12 @@ def main() -> None:
     parser.add_argument("--backend", default=os.environ.get("BACKEND_URL", "http://localhost:8000"))
     parser.add_argument("--episode", default=os.environ.get("TARGET_EPISODE_ID"))
     parser.add_argument("--openclaw-agent", default=os.environ.get("OPENCLAW_AGENT", "main"))
+    parser.add_argument("--openclaw-timeout", type=int, default=int(os.environ.get("AGENT_TIMEOUT", "600")))
     parser.add_argument("--skip-openclaw-executor", action="store_true")
     args = parser.parse_args()
 
     configure_backend(args.backend)
+    agent_common.AGENT_TIMEOUT = args.openclaw_timeout
     episode = create_or_get_episode(args.episode)
     episode_id = episode["id"]
     log(f"running one-shot episode {episode_id} against {agent_common.BACKEND}")

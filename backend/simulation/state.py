@@ -114,14 +114,8 @@ INITIAL_WORLD_STATE = {
             "holding_cost_modifier": 0.8,
             "service_channels": ["big_box_retail"],
             "inventory": {
-                "sku_standard": [
-                    {"age_weeks": 4, "units": 1800},
-                    {"age_weeks": 8, "units": 500},
-                ],
-                "sku_bulk_pack": [
-                    {"age_weeks": 3, "units": 900},
-                    {"age_weeks": 7, "units": 300},
-                ],
+                "sku_standard": [{"age_weeks": 2, "units": 2600}],
+                "sku_bulk_pack": [{"age_weeks": 2, "units": 1100}],
             },
         },
         "west_coast_dc": {
@@ -137,11 +131,8 @@ INITIAL_WORLD_STATE = {
             "holding_cost_modifier": 1.4,
             "service_channels": ["direct_to_consumer"],
             "inventory": {
-                "sku_standard": [
-                    {"age_weeks": 3, "units": 1800},
-                    {"age_weeks": 8, "units": 600},
-                ],
-                "sku_bulk_pack": [{"age_weeks": 4, "units": 300}],
+                "sku_standard": [{"age_weeks": 2, "units": 700}],
+                "sku_bulk_pack": [{"age_weeks": 2, "units": 120}],
             },
         },
         "overflow_3pl": {
@@ -214,8 +205,8 @@ INITIAL_WORLD_STATE = {
         "copacker_to_overflow_truck": {"lane_id": "copacker_to_overflow_truck", "origin": "co_packer_plant", "destination": "overflow_3pl", "mode": "truck", "cost_per_unit": 1.25, "transit_weeks": 1, "capacity_units_per_week": 1000, "emissions_per_unit": 0.45, "reliability": 0.87, "status": "standby", "current_delay_weeks": 0},
         "chicago_to_big_box_truck": {"lane_id": "chicago_to_big_box_truck", "origin": "chicago_hub", "destination": "big_box_retail", "mode": "truck", "cost_per_unit": 0.45, "transit_weeks": 0, "capacity_units_per_week": 3000, "emissions_per_unit": 0.25, "reliability": 0.94, "status": "active", "current_delay_weeks": 0},
         "west_to_dtc_local": {"lane_id": "west_to_dtc_local", "origin": "west_coast_dc", "destination": "direct_to_consumer", "mode": "local", "cost_per_unit": 0.60, "transit_weeks": 0, "capacity_units_per_week": 2200, "emissions_per_unit": 0.22, "reliability": 0.96, "status": "active", "current_delay_weeks": 0},
-        "chicago_to_west_rail": {"lane_id": "chicago_to_west_rail", "origin": "chicago_hub", "destination": "west_coast_dc", "mode": "rail", "cost_per_unit": 0.65, "transit_weeks": 1, "capacity_units_per_week": 2500, "emissions_per_unit": 0.20, "reliability": 0.90, "status": "active", "current_delay_weeks": 0},
-        "west_to_chicago_truck": {"lane_id": "west_to_chicago_truck", "origin": "west_coast_dc", "destination": "chicago_hub", "mode": "truck", "cost_per_unit": 1.10, "transit_weeks": 1, "capacity_units_per_week": 1800, "emissions_per_unit": 0.48, "reliability": 0.89, "status": "active", "current_delay_weeks": 0},
+        "chicago_to_west_rail": {"lane_id": "chicago_to_west_rail", "origin": "chicago_hub", "destination": "west_coast_dc", "mode": "rail", "cost_per_unit": 0.65, "transit_weeks": 0, "capacity_units_per_week": 2500, "emissions_per_unit": 0.20, "reliability": 0.90, "status": "active", "current_delay_weeks": 0},
+        "west_to_chicago_truck": {"lane_id": "west_to_chicago_truck", "origin": "west_coast_dc", "destination": "chicago_hub", "mode": "truck", "cost_per_unit": 1.10, "transit_weeks": 0, "capacity_units_per_week": 1800, "emissions_per_unit": 0.48, "reliability": 0.89, "status": "active", "current_delay_weeks": 0},
         "emergency_air_chicago_to_west": {"lane_id": "emergency_air_chicago_to_west", "origin": "chicago_hub", "destination": "west_coast_dc", "mode": "air", "cost_per_unit": 3.20, "transit_weeks": 0, "capacity_units_per_week": 900, "emissions_per_unit": 1.10, "reliability": 0.97, "status": "active", "current_delay_weeks": 0},
     },
     "graph": {
@@ -251,6 +242,8 @@ INITIAL_WORLD_STATE = {
         "big_box_retail": {"sku_standard": 0, "sku_bulk_pack": 0},
         "direct_to_consumer": {"sku_standard": 0, "sku_bulk_pack": 0},
     },
+    "last_demand_fulfilled_time_step": None,
+    "service_projection_dirty": True,
     "action_history": [],
     "event_history": [],
     "alert_history": [],

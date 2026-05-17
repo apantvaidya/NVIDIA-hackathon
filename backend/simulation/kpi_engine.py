@@ -53,8 +53,10 @@ def _mode_shares(state):
 
 def calculate_kpis(state):
     projected_unmet, projected_fulfilled = _projected_unmet(state)
-    unmet = state.get("last_unmet_demand") or projected_unmet
-    fulfilled = state.get("last_fulfilled_demand") or projected_fulfilled
+    has_current_actuals = state.get("last_demand_fulfilled_time_step") == state.get("time_step")
+    use_actuals = has_current_actuals and not state.get("service_projection_dirty", True)
+    unmet = state.get("last_unmet_demand") if use_actuals else projected_unmet
+    fulfilled = state.get("last_fulfilled_demand") if use_actuals else projected_fulfilled
 
     demand_totals = _demand_totals(state)
     total_demand_units = sum(demand_totals.values())
