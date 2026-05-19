@@ -1,72 +1,63 @@
 # ChainPilot Agent Runners
 
-Three Python runners that talk to the ChainPilot backend on behalf of the
-Red, Blue, and Executor OpenClaw agents.
+Python runners that connect ChainPilot episodes to OpenClaw/NVIDIA Nemotron.
 
+For the hackathon MVP, use `run_mvp_episode.py`. It makes one OpenClaw call, receives a compact Red/Blue decision package, posts the episode events, executes Blue's final action, records KPI impact, and completes the episode.
+
+## Recommended MVP Command
+
+```bash
+cd agents
+export BACKEND_URL=https://backend-supply-utfs.onrender.com
+
+python3 run_mvp_episode.py \
+  --backend https://backend-supply-utfs.onrender.com \
+  --openclaw-agent main \
+  --openclaw-timeout 900 \
+  --reset-first
 ```
+
+## Files
+
+```text
 agents/
   agent_common.py        shared HTTP + OpenClaw helpers
-  red_agent.py           proposes one inefficiency fix per cycle
-  blue_agent.py          validates and revises Red's plans
-  executor_agent.py      applies Blue-approved plans
-  prompts/
-    red-agent.md         system prompt for OpenClaw red-agent
-    blue-agent.md        system prompt for OpenClaw blue-agent
-    executor-agent.md    system prompt for OpenClaw executor-agent
-  requirements.txt       just `requests`
+  run_mvp_episode.py     recommended one-shot MVP runner
+  run_episode.py         older multi-turn one-shot coordinator
+  red_agent.py           legacy long-running Red runner
+  blue_agent.py          legacy long-running Blue runner
+  executor_agent.py      legacy long-running Executor runner
+  red/agent.md           Red prompt
+  blue/agent.md          Blue prompt
+  executor/agent.md      Executor prompt
 ```
 
-## Setup (per machine)
+## Environment Variables
 
-```bash
-git clone https://github.com/SanjivSimha/NVIDIA-hackathon.git
-cd NVIDIA-hackathon/agents
-pip install -r requirements.txt
-export BACKEND_URL=https://backend-supply-utfs.onrender.com
+| variable | default | purpose |
+|---|---:|---|
+| `BACKEND_URL` | `http://localhost:8000` | ChainPilot backend URL |
+| `OPENCLAW_BIN` | `openclaw` | OpenClaw CLI path |
+| `OPENCLAW_AGENT` | `main` | OpenClaw agent id for `run_mvp_episode.py` |
+| `AGENT_TIMEOUT` | `600` | OpenClaw timeout in seconds |
+| `RED_AUTO_CREATE_EPISODES` | `0` | opt-in only for legacy Red auto episode creation |
+
+## No Mock Fallbacks
+
+The MVP runners are designed to use OpenClaw. Mock/fallback agent events are rejected by the backend so the demo does not accidentally show placeholder decisions.
+
+If OpenClaw is slow, prefer shrinking the decision brief rather than sending the full simulation state.
+
+## Event Flow
+
+```text
+RED_PLAN
+-> BLUE_ASSESSMENT
+-> BLUE_REVISED_PLAN
+-> EXECUTOR_ACTION
+-> EXECUTION_RESULT
+-> KPI_EVALUATION
+-> NARRATION
 ```
 
-Then start ONE of these per box (each blocks; run in tmux/nohup/screen):
-
-```bash
-# teammate's Brev box
-AGENT_ID=red_agent  python3 red_agent.py
-
-# your Brev box (two terminals)
-AGENT_ID=blue_agent              python3 blue_agent.py
-AGENT_ID=executor_narrator_agent python3 executor_agent.py
-```
-
-## Environment variables
-
-| var | default | purpose |
-|---|---|---|
-| `BACKEND_URL` | `http://localhost:8000` | base URL of the backend |
-| `AGENT_ID` | `anon-agent` | string written into every event |
-| `OPENCLAW_BIN` | `openclaw` | path to the openclaw binary |
-| `AGENT_TIMEOUT` | `180` | seconds to wait for openclaw |
-| `RED_INTERVAL_SECONDS` | `60` | how often Red scans |
-| `BLUE_POLL_INTERVAL` | `2` | how often Blue polls |
-| `EXECUTOR_POLL_INTERVAL` | `2` | how often Executor polls |
-
-## Without OpenClaw
-
-If the `openclaw` binary isn't on PATH, each runner falls back to a small
-mock so you can still see the end-to-end flow on the dashboard. Install
-OpenClaw and the `.md` agents under `prompts/` to use the real brains.
-
-## Register the prompts with OpenClaw
-
-The `.md` files in `prompts/` are the system prompts. Place / register
-them wherever your OpenClaw installation expects agent definitions to
-live (this varies by setup — check your OpenClaw config).
-
-Once registered, the runners invoke them via:
-
-```bash
-openclaw agent --agent red-agent      --message "<json blob>"
-openclaw agent --agent blue-agent     --message "<json blob>"
-openclaw agent --agent executor-agent --message "<json blob>"
-```
-
-The runners parse the first JSON object/array from stdout (ignoring
-banner / log noise) and submit the corresponding events to the backend.
+The simulator remains the world model and consequence engine. Agents choose actions and explain tradeoffs; the backend validates and executes only supported action endpoints.

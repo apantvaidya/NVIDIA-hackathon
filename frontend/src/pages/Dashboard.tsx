@@ -9,7 +9,18 @@ import { useOptimizationProfile } from "../hooks/useOptimizationProfile";
 import { useSimulationData } from "../hooks/useSimulationData";
 
 export function Dashboard() {
-  const [activeView, setActiveView] = useState<DashboardView>("operations");
+  const initialView = typeof window === "undefined"
+    ? "operations"
+    : window.location.hash.replace("#", "");
+  const [activeView, setActiveView] = useState<DashboardView>(
+    ["operations", "agents", "analytics"].includes(initialView)
+      ? (initialView as DashboardView)
+      : "operations",
+  );
+  const changeView = (view: DashboardView) => {
+    setActiveView(view);
+    window.history.replaceState(null, "", `#${view}`);
+  };
   const data = useSimulationData();
   const { profile, selectProfile } = useOptimizationProfile();
   const lastUpdated = data.kpiHistory[data.kpiHistory.length - 1]?.timestamp;
@@ -33,7 +44,7 @@ export function Dashboard() {
         </div>
       )}
 
-      <DashboardTabs activeView={activeView} onChange={setActiveView} />
+      <DashboardTabs activeView={activeView} onChange={changeView} />
 
       {activeView === "operations" && (
         <OperationsView data={data} profile={profile} selectProfile={selectProfile} />
